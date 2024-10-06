@@ -8,7 +8,7 @@ const CONFIG = {
     maxDepth: 3
 };
 
-let root, svg, g, zoom, walletNames = new Map(), allTransactions = [], filteredTransactions = [];
+let svg, g, zoom, walletNames = new Map(), allTransactions = [], filteredTransactions = [];
 
 const main = async () => {
     loadStoredData();
@@ -41,8 +41,9 @@ const saveStoredData = () => {
 };
 
 const setupSvg = () => {
-    const {clientWidth: width, clientHeight: height} = document.getElementById('tree-container');
-    svg = d3.select("#tree-container").append("svg").attr("width", width).attr("height", height);
+    const container = document.getElementById('visualization-container');
+    const {clientWidth: width, clientHeight: height} = container;
+    svg = d3.select("#visualization-container").append("svg").attr("width", width).attr("height", height);
     g = svg.append("g");
     zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => g.attr("transform", event.transform));
     svg.call(zoom);
@@ -51,9 +52,8 @@ const setupSvg = () => {
 const updateVisualization = async () => {
     try {
         document.querySelector('.loading').style.display = 'block';
-        const data = await fetchWalletDataRecursive(CONFIG.startingWallet);
-        root = d3.hierarchy(data);
-        createForceDirectedVisualization(root);
+        const data = await fetchWalletData(CONFIG.startingWallet);
+        createBubbleVisualization(data);
         filteredTransactions = [...allTransactions];
         updateAnalytics();
     } catch (error) {
@@ -64,16 +64,12 @@ const updateVisualization = async () => {
     }
 };
 
-const fetchWalletDataRecursive = async (wallet, depth = 0) => {
-    if (depth >= CONFIG.maxDepth) return { address: wallet, balance: "Max depth", children: [], transactions: [] };
+const fetchWalletData = async (wallet) => {
     try {
         const response = await fetch(`${CONFIG.apiUrl}/addresses/${wallet}/transactions?filter=to%20%7C%20from&limit=${CONFIG.batchSize}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        const processedData = processTransactions(wallet, data.items || []);
-        allTransactions.push(...processedData.transactions);
-        processedData.children = await Promise.all(processedData.children.map(child => fetchWalletDataRecursive(child.address, depth + 1)));
-        return processedData;
+        return processTransactions(wallet, data.items || []);
     } catch (error) {
         console.error("Error fetching wallet data:", error);
         return { address: wallet, balance: "Error", children: [], transactions: [] };
@@ -97,9 +93,15 @@ const processTransactions = (wallet, transactions) => {
         } else if (fromAddress === walletAddress) {
             balance -= value;
             if (!children.has(toAddress)) {
-                children.set(toAddress, { address: toAddress, value: 0, children: [], transactions: [] });
+                children.set(toAddress, { address: toAddress, value: 0, transactions: [] });
             }
             children.get(toAddress).value += value;
+            children.get(toAddress).transactions.push({
+                from: fromAddress,
+                to: toAddress,
+                value,
+                date: new Date(parseInt(tx.timestamp) * 1000).toLocaleString()
+            });
         }
 
         processedTransactions.push({
@@ -118,27 +120,28 @@ const processTransactions = (wallet, transactions) => {
     };
 };
 
-const createForceDirectedVisualization = (root) => {
-    const {clientWidth: width, clientHeight: height} = document.getElementById('tree-container');
+const createBubbleVisualization = (data) => {
+    const {clientWidth: width, clientHeight: height} = document.getElementById('visualization-container');
     g.selectAll("*").remove();
 
-    const nodes = root.descendants();
-    const links = root.links();
+    const nodes = [data, ...data.children];
+    const links = data.children.map(child => ({source: data, target: child}));
 
     const simulation = d3.forceSimulation(nodes)
-        .force("link", d3.forceLink(links).id(d => d.data.address).distance(100))
+        .force("link", d3.forceLink(links).id(d => d.address).distance(100))
         .force("charge", d3.forceManyBody().strength(-300))
-        .force("center", d3.forceCenter(width / 2, height / 2));
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collision", d3.forceCollide().radius(d => Math.sqrt(Math.abs(parseFloat(d.balance || d.value)) || 1) * 5 + 5));
 
     const link = g.selectAll(".link")
         .data(links)
-        .enter().append("line")
+        .join("line")
         .attr("class", "link")
         .attr("marker-end", "url(#arrowhead)");
 
     const node = g.selectAll(".node")
         .data(nodes)
-        .enter().append("g")
+        .join("g")
         .attr("class", "node")
         .call(d3.drag()
             .on("start", dragstarted)
@@ -146,23 +149,23 @@ const createForceDirectedVisualization = (root) => {
             .on("end", dragended));
 
     node.append("circle")
-        .attr("r", d => Math.sqrt(Math.abs(parseFloat(d.data.balance)) || 1) * 5)
-        .style("fill", d => d3.schemeCategory10[d.depth % 10]);
+        .attr("r", d => Math.sqrt(Math.abs(parseFloat(d.balance || d.value)) || 1) * 5)
+        .style("fill", (d, i) => d3.schemeCategory10[i % 10]);
 
     node.append("text")
         .attr("dy", ".3em")
         .style("text-anchor", "middle")
         .text(d => {
-            const name = walletNames.get(d.data.address) || d.data.address.slice(0, 10) + "...";
-            return d.r > 20 ? name : '';
+            const name = walletNames.get(d.address) || d.address.slice(0, 10) + "...";
+            return name;
         });
 
     node.append("title")
-        .text(d => `Address: ${d.data.address}\nBalance: ${d.data.balance}\nLast Transaction: ${d.data.transactions[0]?.date || 'N/A'}`);
+        .text(d => `Address: ${d.address}\nBalance: ${d.balance || d.value}\nLast Transaction: ${d.transactions?.[0]?.date || 'N/A'}`);
 
-    node.on("click", (event, d) => showWalletDetails(d.data));
+    node.on("click", (event, d) => showWalletDetails(d));
 
-    // Add arrowhead marker
+    svg.selectAll("defs").remove();
     svg.append("defs").append("marker")
         .attr("id", "arrowhead")
         .attr("viewBox", "0 -5 10 10")
@@ -182,8 +185,7 @@ const createForceDirectedVisualization = (root) => {
             .attr("x2", d => d.target.x)
             .attr("y2", d => d.target.y);
 
-        node
-            .attr("transform", d => `translate(${d.x},${d.y})`);
+        node.attr("transform", d => `translate(${d.x},${d.y})`);
     });
 
     function dragstarted(event, d) {
@@ -208,9 +210,9 @@ const showWalletDetails = (data) => {
     const name = walletNames.get(data.address) || 'Unnamed';
     document.getElementById('wallet-details').innerHTML = `
         <h3>${name} (${data.address.slice(0, 10)}...)</h3>
-        <p>Balance: ${data.balance} TRB</p>
+        <p>Balance: ${data.balance || data.value} TRB</p>
         <p>Transaction History:</p>
-        <ul>${data.transactions.map(tx => `<li>From: ${tx.from.slice(0, 10)}... To: ${tx.to.slice(0, 10)}... Amount: ${tx.value} TRB Date: ${tx.date}</li>`).join('')}</ul>
+        <ul>${(data.transactions || []).slice(0, 10).map(tx => `<li>From: ${tx.from.slice(0, 10)}... To: ${tx.to.slice(0, 10)}... Amount: ${tx.value} TRB Date: ${tx.date}</li>`).join('')}</ul>
         <input type="text" id="wallet-name-input" placeholder="Enter wallet name">
         <button onclick="setWalletName('${data.address}')">Set Name</button>
     `;
