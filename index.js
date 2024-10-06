@@ -59,10 +59,10 @@ const updateVisualization = async () => {
 const fetchWalletDataRecursive = async (wallet, depth = 0) => {
     if (depth >= CONFIG.maxDepth) return { address: wallet, balance: "Max depth", children: [] };
     try {
-        const response = await fetch(`${CONFIG.apiUrl}/addresses/${wallet}/transactions?filter=to&sort=desc&limit=${CONFIG.batchSize}`);
+        const response = await fetch(`${CONFIG.apiUrl}/addresses/${wallet}/transactions?filter=to%20%7C%20from&limit=${CONFIG.batchSize}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        const processedData = processTransactions(wallet, data.items);
+        const processedData = processTransactions(wallet, data.items || []);
         allTransactions.push(...processedData.children);
         processedData.children = await Promise.all(processedData.children.map(child => fetchWalletDataRecursive(child.address, depth + 1)));
         return processedData;
@@ -75,14 +75,19 @@ const fetchWalletDataRecursive = async (wallet, depth = 0) => {
 const processTransactions = (wallet, transactions) => {
     let balance = 0;
     const children = transactions.reduce((acc, tx) => {
-        if (tx.to && tx.to.toLowerCase() === wallet.toLowerCase()) {
-            balance += parseFloat(tx.value);
-        } else if (tx.from && tx.from.toLowerCase() === wallet.toLowerCase()) {
-            balance -= parseFloat(tx.value);
+        if (typeof tx !== 'object' || tx === null) return acc;
+        const toAddress = String(tx.to).toLowerCase();
+        const fromAddress = String(tx.from).toLowerCase();
+        const walletAddress = wallet.toLowerCase();
+        
+        if (toAddress === walletAddress) {
+            balance += parseFloat(tx.value || 0);
+        } else if (fromAddress === walletAddress) {
+            balance -= parseFloat(tx.value || 0);
             acc.push({ 
-                address: tx.to, 
-                value: tx.value, 
-                date: new Date(tx.timeStamp * 1000).toLocaleString(), 
+                address: toAddress, 
+                value: tx.value || '0', 
+                date: new Date(parseInt(tx.timestamp) * 1000).toLocaleString(), 
                 children: [] 
             });
         }
