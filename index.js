@@ -2,7 +2,10 @@ const CONFIG = {
     startingWallet: "0xfD35CFd830ADace105280B33A911C16367EF2337",
     trbContractAddress: "0x88dF592F8eb5D7Bd38bFeF7dEb0fBc02cf3778a0",
     apiUrl: "https://api.scan.pulsechain.com/api/v2",
-    batchSize: 50, maxDepth: 3
+    rpcUrl: "https://rpc.pulsechain.com",
+    chainId: 369,
+    batchSize: 50,
+    maxDepth: 3
 };
 
 let root, svg, g, zoom, walletNames = new Map(), allTransactions = [], filteredTransactions = [];
@@ -47,6 +50,7 @@ const updateVisualization = async () => {
         updateAnalytics();
     } catch (error) {
         console.error("Error updating visualization:", error);
+        showError("Error updating visualization: " + error.message);
     } finally {
         document.querySelector('.loading').style.display = 'none';
     }
@@ -55,7 +59,7 @@ const updateVisualization = async () => {
 const fetchWalletDataRecursive = async (wallet, depth = 0) => {
     if (depth >= CONFIG.maxDepth) return { address: wallet, balance: "Max depth", children: [] };
     try {
-        const response = await fetch(`${CONFIG.apiUrl}/addresses/${CONFIG.trbContractAddress}/transactions?filter=to&sort=desc&limit=${CONFIG.batchSize}`);
+        const response = await fetch(`${CONFIG.apiUrl}/addresses/${wallet}/transactions?filter=to&sort=desc&limit=${CONFIG.batchSize}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         const processedData = processTransactions(wallet, data.items);
@@ -71,10 +75,16 @@ const fetchWalletDataRecursive = async (wallet, depth = 0) => {
 const processTransactions = (wallet, transactions) => {
     let balance = 0;
     const children = transactions.reduce((acc, tx) => {
-        if (tx.to.toLowerCase() === wallet.toLowerCase()) balance += parseFloat(tx.value);
-        else if (tx.from.toLowerCase() === wallet.toLowerCase()) {
+        if (tx.to && tx.to.toLowerCase() === wallet.toLowerCase()) {
+            balance += parseFloat(tx.value);
+        } else if (tx.from && tx.from.toLowerCase() === wallet.toLowerCase()) {
             balance -= parseFloat(tx.value);
-            acc.push({ address: tx.to, value: tx.value, date: new Date(tx.timestamp * 1000).toLocaleString(), children: [] });
+            acc.push({ 
+                address: tx.to, 
+                value: tx.value, 
+                date: new Date(tx.timeStamp * 1000).toLocaleString(), 
+                children: [] 
+            });
         }
         return acc;
     }, []);
@@ -159,6 +169,13 @@ const updateAnalytics = () => {
     update('total-transactions', totalTx);
     update('total-volume', totalVolume.toFixed(2));
     update('avg-transaction', avgTx.toFixed(2));
+};
+
+const showError = (message) => {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => { errorDiv.style.display = 'none'; }, 5000);
 };
 
 main();
