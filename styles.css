@@ -1,7 +1,7 @@
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 20px;
+    padding: 0;
     background-color: #121212;
     color: #e0e0e0;
     transition: background-color 0.3s, color 0.3s;
@@ -12,9 +12,34 @@ body {
     color: #121212;
 }
 
+#app-container {
+    display: flex;
+    height: 100vh;
+}
+
+#sidebar {
+    width: 300px;
+    padding: 20px;
+    background-color: #1e1e1e;
+    overflow-y: auto;
+}
+
+#main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+#visualization-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
 h1 {
     text-align: center;
     color: #bb86fc;
+    margin-top: 0;
 }
 
 #controls, #filter-controls, #analytics {
@@ -22,15 +47,6 @@ h1 {
     padding: 10px;
     border: 1px solid #03dac6;
     border-radius: 5px;
-}
-
-#tree-container {
-    width: 100%;
-    height: 600px;
-    border: 1px solid #03dac6;
-    margin-bottom: 20px;
-    position: relative;
-    overflow: hidden;
 }
 
 .node circle {
@@ -68,12 +84,14 @@ h1 {
 }
 
 input, button {
-    margin: 5px;
+    margin: 5px 0;
     padding: 5px;
     background-color: #121212;
     color: #e0e0e0;
     border: 1px solid #bb86fc;
     border-radius: 3px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 button:hover {
@@ -88,6 +106,10 @@ button:hover {
     transform: translate(-50%, -50%);
     color: #bb86fc;
     font-size: 18px;
+}
+
+.light #sidebar {
+    background-color: #f0f0f0;
 }
 
 .light .node circle {
