@@ -50,6 +50,10 @@ h1 {
     stroke-width: 2px;
 }
 
+.arrowhead {
+    fill: #03dac6;
+}
+
 #wallet-details, #error-message {
     margin-top: 20px;
     padding: 10px;
@@ -97,6 +101,10 @@ button:hover {
 
 .light .link {
     stroke: #03dac6;
+}
+
+.light .arrowhead {
+    fill: #03dac6;
 }
 
 .light input, .light button {
